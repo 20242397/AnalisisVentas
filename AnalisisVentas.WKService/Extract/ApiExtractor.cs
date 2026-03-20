@@ -1,7 +1,6 @@
 ﻿using AnalisisVentas.Data.Entities.Api;
 using AnalisisVentas.Data.Interfaces;
 using System.Net.Http.Json;
-using Microsoft.Extensions.Logging;
 
 namespace AnalisisVentas.WKService.Extract
 {
@@ -20,26 +19,33 @@ namespace AnalisisVentas.WKService.Extract
 
         public async Task ExtractAsync(ExtractedData data)
         {
+            
             var baseUrl = _config["Api:BaseUrl"];
 
             try
             {
-                _logger.LogInformation("🌐 Consumiento API...");
+                _logger.LogInformation("==> Iniciando extracción desde API REST...");
 
-                var customers = await _httpClient.GetFromJsonAsync<List<CustomerApiDto>>($"{baseUrl}/source/customers");
-                var products = await _httpClient.GetFromJsonAsync<List<ProductApiDto>>($"{baseUrl}/source/products");
+                
+                var response = await _httpClient.GetFromJsonAsync<List<VentaExtractDto>>($"{baseUrl}/SourceVentas/extract");
 
-                data.ApiCustomers = customers ?? new();
-                data.ApiProducts = products ?? new();
-
-                _logger.LogInformation("✅ API extraída correctamente");
+                if (response != null && response.Count > 0)
+                {
+                    data.ApiSales = response;
+                    _logger.LogInformation($"==> Éxito: {data.ApiSales.Count} registros de ventas extraídos de la API.");
+                }
+                else
+                {
+                    _logger.LogWarning("==> La API respondió correctamente pero no se encontraron registros.");
+                }
+            }
+            catch (HttpRequestException httpEx)
+            {
+                _logger.LogError($"!!! Error de conexión: ¿Está la Web API corriendo en {baseUrl}? Detalle: {httpEx.Message}");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en API Extractor");
-
-                data.ApiCustomers = new();
-                data.ApiProducts = new();
+                _logger.LogError(ex, "!!! Error inesperado en ApiExtractor");
             }
         }
     }

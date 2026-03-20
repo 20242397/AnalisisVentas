@@ -12,124 +12,106 @@ namespace AnalisisVentas.WKService.Transform
         {
             var result = new TransformedData();
 
-            // =========================
-            // 🔹 1. CUSTOMERS (DB + API)
-            // =========================
-            var customers = data.DbCustomers
-                .Concat(data.ApiCustomers.Select(a => new Customer
-                {
-                    CustomerId = a.CustomerID,
-                    FirstName = a.FirstName,
-                    LastName = a.LastName,
-                    Email = a.Email,
-                    Phone = "",
-                    CityId = 0
-                }))
-                .Where(c => !string.IsNullOrEmpty(c.Email))
-                .GroupBy(c => c.CustomerId)
-                .Select(g => g.First())
-                .ToList();
-
-            result.DimCustomers = customers.Select(c => new DimCustomer
+           
+            var sqlCustomers = data.DbCustomers.Select(c => new DimCustomer
             {
                 CustomerID = c.CustomerId,
                 FirstName = c.FirstName,
                 LastName = c.LastName,
                 Email = c.Email,
                 Phone = c.Phone,
-                City = "N/A",     // porque no hicimos JOIN aún
-                Country = "N/A"
-            }).ToList();
+                City = "Local Source",
+                Country = "Dominican Republic"
+            });
 
-            // =========================
-            // 🔹 2. PRODUCTS (DB + CSV + API)
-            // =========================
-            var products = data.DbProducts
-                .Concat(data.CsvProducts.Select(c => new Product
+            var apiCustomers = data.ApiSales.Select(s => {
+              
+                var detail = data.ApiCustomers.FirstOrDefault(ac => ac.CustomerID == s.CustomerID);
+                return new DimCustomer
                 {
-                    ProductId = c.ProductID,
-                    ProductName = c.ProductName,
-                    CategoryId = 0,
-                    Price = c.Price,
-                    Stock = c.Stock
-                }))
-                .Concat(data.ApiProducts.Select(a => new Product
+                    CustomerID = s.CustomerID,
+                    FirstName = s.FirstName,
+                    LastName = s.LastName,
+                    Email = detail?.Email ?? "No Email",
+                    Phone = detail?.Phone ?? "No Phone",
+                    City = s.CityName,  
+                    Country = s.CountryName 
+                };
+            });
+
+            result.DimCustomers = sqlCustomers
+                .Concat(apiCustomers)
+                .GroupBy(c => c.CustomerID)
+                .Select(g => g.First())
+                .ToList();
+
+            
+            result.DimProducts = data.DbProducts
+                .Select(p => new DimProduct { ProductID = p.ProductId, ProductName = p.ProductName, Category = "Local Stock", Price = p.Price ?? 0m })
+                .Concat(data.CsvProducts.Select(c => new DimProduct { ProductID = c.ProductID, ProductName = c.ProductName, Category = "CSV Import", Price = c.Price }))
+                .Concat(data.ApiSales.Select(a => new DimProduct
                 {
-                    ProductId = a.ProductID,
+                    ProductID = a.ProductID,
                     ProductName = a.ProductName,
-                    CategoryId = 0,
-                    Price = a.Price,
-                    Stock = 0
+                    Category = a.CategoryName,
+                    Price = a.Price
                 }))
-                .GroupBy(p => p.ProductId)
+                .GroupBy(p => p.ProductID)
                 .Select(g => g.First())
                 .ToList();
 
-            result.DimProducts = products.Select(p => new DimProduct
+           
+            var allDates = data.DbOrders.Select(o => o.OrderDate)
+                .Concat(data.CsvOrders.Select(c => c.OrderDate))
+                .Concat(data.ApiSales.Select(s => s.OrderDate))
+                .Where(d => d != default)
+                .Distinct();
+
+            result.DimDates = allDates.Select(d => new DimDate
             {
-                ProductID = p.ProductId,
-                ProductName = p.ProductName,
-                Category = "General", // porque no hicimos JOIN a Categories
-                Price = (decimal)p.Price,
+                DateID = int.Parse(d.ToString("yyyyMMdd")),
+                FullDate = d,
+                Year = d.Year,
+                Month = d.Month,
+                Day = d.Day
             }).ToList();
 
-            // =========================
-            // 🔹 3. ORDERS (DB + CSV)
-            // =========================
-            // Fix for CS0029: Convert DateTime to DateOnly when mapping OrderCsv to Order
-            var orders = data.DbOrders
-                .Concat(data.CsvOrders.Select(c => new Order
-                {
-                    OrderId = c.OrderID,
-                    CustomerId = c.CustomerID,
-                    OrderDate = c.OrderDate,
-                    StatusId = 0
-                }))
-                .GroupBy(o => o.OrderId)
-                .Select(g => g.First())
-                .ToList();
+           
+            var sqlFacts = from o in data.DbOrders
+                           join od in data.DbOrderDetails on o.OrderId equals od.OrderId
+                           select new FactSales
+                           {
+                               OrderID = o.OrderId,
+                               CustomerID = o.CustomerId ?? 0,
+                               ProductID = od.ProductId,
+                               Quantity = od.Quantity ?? 0,
+                               TotalPrice = od.TotalPrice ?? 0m,
+                               DateID = int.Parse(o.OrderDate.ToString("yyyyMMdd"))
+                           };
 
-            var orderDetails = data.DbOrderDetails
-                .Concat(data.CsvOrderDetails.Select(c => new OrderDetail
-                {
-                    OrderId = c.OrderID,
-                    ProductId = c.ProductID,
-                    Quantity = c.Quantity,
-                    TotalPrice = c.TotalPrice
-                }))
-                .ToList();
+            var csvFacts = from o in data.CsvOrders
+                           join od in data.CsvOrderDetails on o.OrderID equals od.OrderID
+                           select new FactSales
+                           {
+                               OrderID = o.OrderID,
+                               CustomerID = o.CustomerID,
+                               ProductID = od.ProductID,
+                               Quantity = od.Quantity,
+                               TotalPrice = od.TotalPrice,
+                               DateID = int.Parse(o.OrderDate.ToString("yyyyMMdd"))
+                           };
 
-            // =========================
-            // 🔹 4. DIM DATE
-            // =========================
-            result.DimDates = orders
-                .Where(o => o.OrderDate != default(DateTime))
-                .Select(o => new DimDate
-                {
-                    DateID = int.Parse(o.OrderDate.ToString("yyyyMMdd")),
-                    FullDate = o.OrderDate,
-                    Year = o.OrderDate.Year,
-                    Month = o.OrderDate.Month,
-                    Day = o.OrderDate.Day
-                })
-                .DistinctBy(d => d.DateID)
-                .ToList();
+            var apiFacts = data.ApiSales.Select(s => new FactSales
+            {
+                OrderID = s.OrderID,
+                CustomerID = s.CustomerID,
+                ProductID = s.ProductID,
+                Quantity = s.Quantity,
+                TotalPrice = s.TotalPrice,
+                DateID = int.Parse(s.OrderDate.ToString("yyyyMMdd"))
+            });
 
-            // =========================
-            // 🔹 5. FACT SALES
-            // =========================
-            result.FactSales = (from o in orders
-                                join od in orderDetails on o.OrderId equals od.OrderId
-                                where o.CustomerId.HasValue && od.Quantity.HasValue
-                                select new FactSales
-                                {
-                                    OrderID = o.OrderId,
-                                    CustomerID = o.CustomerId.Value, // Fix: use .Value to get int from int?
-                                    ProductID = od.ProductId,
-                                    DateID = int.Parse(o.OrderDate.ToString("yyyyMMdd")), // Fix: use .Value and correct ToString overload
-                                    Quantity = od.Quantity.Value, // Fix: use .Value to get int from int?
-                                    TotalPrice = od.TotalPrice ?? 0m // Fix: handle nullable decimal
-                                }).ToList();
+            result.FactSales = sqlFacts.Concat(csvFacts).Concat(apiFacts).ToList();
 
             return result;
         }

@@ -1,55 +1,37 @@
-using AnalisisVentas.Data.Persistence;
-using AnalisisInventario.WorkerService.Load;
+
 using AnalisisVentas.Data.Interfaces;
-using AnalisisVentas.WKService;
+using AnalisisVentas.Data.Persistence;
 using AnalisisVentas.WKService.Extract;
-using AnalisisVentas.WKService.Transform;
+using AnalisisVentas.WKService.Load;
 using AnalisisVentas.WKService.Staging;
+using AnalisisVentas.WKService.Transform;
 
-var builder = Host.CreateApplicationBuilder(args);
+namespace AnalisisVentas.WKService
+{
+    public class Program
+    {
+        public static async Task Main(string[] args)
+        {
+            var builder = Host.CreateApplicationBuilder(args);
 
-// =========================
-// 🔹 CONFIGURACIÓN
-// =========================
-builder.Configuration.AddJsonFile("appsettings.json", optional: false);
+            builder.Services.AddSingleton<DapperContext>();
+            builder.Services.AddHttpClient(); 
 
-// =========================
-// 🔹 LOGGING (YA VIENE POR DEFECTO)
-// =========================
+           
+            builder.Services.AddTransient<CsvExtractor>();
+            builder.Services.AddTransient<ApiExtractor>();
+            builder.Services.AddTransient<DatabaseExtractor>();
 
-// =========================
-// 🔹 DAPPER CONTEXT
-// =========================
-builder.Services.AddSingleton<DapperContext>();
+            builder.Services.AddTransient<JsonStagingService>();
+            builder.Services.AddTransient<ITransformer, DataTransformer>();
+            builder.Services.AddTransient<ILoader, DataLoader>();
 
-// =========================
-// 🔹 ETL SERVICES
-// =========================
-builder.Services.AddScoped<CsvExtractor>();
-builder.Services.AddScoped<ApiExtractor>();
-builder.Services.AddScoped<DatabaseExtractor>();
+          
+            builder.Services.AddHostedService<Worker>();
 
-builder.Services.AddScoped<ITransformer, DataTransformer>();
-builder.Services.AddScoped<ILoader, DataLoader>();
-
-// =========================
-// 🔹 STAGING
-// =========================
-builder.Services.AddScoped<JsonStagingService>();
-
-// =========================
-// 🔹 HTTP CLIENT (API)
-// =========================
-builder.Services.AddHttpClient();
-
-// =========================
-// 🔹 WORKER (🔥 CLAVE)
-// =========================
-builder.Services.AddHostedService<Worker>();
-
-// =========================
-// 🔹 BUILD & RUN
-// =========================
-var host = builder.Build();
-
-await host.RunAsync();
+           
+            var host = builder.Build();
+            await host.RunAsync();
+        }
+    }
+}

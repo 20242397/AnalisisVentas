@@ -20,9 +20,9 @@ namespace AnalisisVentas.WKService.Extract
         {
             try
             {
-                _logger.LogInformation("📂 Iniciando extracción de archivos CSV desde ruta externa...");
+                _logger.LogInformation(" Iniciando extracción de archivos CSV desde ruta externa...");
 
-                // Obtenemos la ruta base una sola vez (C:\Proceso ETL)
+                
                 string basePath = _config["CsvSettings:BasePath"] ?? "";
 
                 data.CsvProducts = ReadCsv<ProductCsv>(basePath, "CsvSettings:ProductsPath");
@@ -30,25 +30,25 @@ namespace AnalisisVentas.WKService.Extract
                 data.CsvOrders = ReadCsv<OrderCsv>(basePath, "CsvSettings:OrdersPath");
                 data.CsvOrderDetails = ReadCsv<OrderDetailCsv>(basePath, "CsvSettings:OrderDetailsPath");
 
-                _logger.LogInformation("✅ Fase de extracción CSV finalizada.");
+                _logger.LogInformation(" Fase de extracción CSV finalizada.");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error crítico en CsvExtractor");
+                _logger.LogError(ex, " Error crítico en CsvExtractor");
             }
         }
 
         private List<T> ReadCsv<T>(string basePath, string configKey)
         {
-            // 1. Obtenemos el nombre del archivo del JSON (ej: products.csv)
+            
             var fileName = _config[configKey];
 
-            // 2. Combinamos para obtener la ruta completa (C:\Proceso ETL\products.csv)
+            
             var fullPath = Path.Combine(basePath, fileName ?? "");
 
             if (string.IsNullOrEmpty(fileName) || !File.Exists(fullPath))
             {
-                _logger.LogWarning($"⚠️ Archivo no encontrado o ruta inválida: {fullPath}");
+                _logger.LogWarning($" Archivo no encontrado o ruta inválida: {fullPath}");
                 return new List<T>();
             }
 
@@ -60,7 +60,7 @@ namespace AnalisisVentas.WKService.Extract
             }
             catch (Exception ex)
             {
-                _logger.LogError($"❌ Error al leer el archivo {fileName}: {ex.Message}");
+                _logger.LogError($" Error al leer el archivo {fileName}: {ex.Message}");
                 return new List<T>();
             }
         }

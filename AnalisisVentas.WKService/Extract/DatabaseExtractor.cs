@@ -23,18 +23,18 @@ namespace AnalisisVentas.WKService.Extract
 
             try
             {
-                _logger.LogInformation("🗄️ Extrayendo datos de la base de datos...");
+                _logger.LogInformation(" Extrayendo datos de la base de datos...");
 
                 data.DbCustomers = (await connection.QueryAsync<Customer>("SELECT * FROM Customers")).ToList();
                 data.DbProducts = (await connection.QueryAsync<Product>("SELECT * FROM Products")).ToList();
                 data.DbOrders = (await connection.QueryAsync<Order>("SELECT * FROM Orders")).ToList();
                 data.DbOrderDetails = (await connection.QueryAsync<OrderDetail>("SELECT * FROM OrderDetails")).ToList();
 
-                _logger.LogInformation("✅ Datos de BD extraídos correctamente");
+                _logger.LogInformation(" Datos de BD extraídos correctamente");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "❌ Error en DatabaseExtractor");
+                _logger.LogError(ex, " Error en DatabaseExtractor");
 
                 data.DbCustomers = new();
                 data.DbProducts = new();

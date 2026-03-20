@@ -3,7 +3,7 @@ using AnalisisVentas.Data.Interfaces;
 using Dapper;
 using System.Data;
 
-namespace AnalisisInventario.WorkerService.Load
+namespace AnalisisVentas.WKService.Load // Corregido para ser consistente con tus otros namespaces
 {
     public class DataLoader : ILoader
     {
@@ -17,19 +17,18 @@ namespace AnalisisInventario.WorkerService.Load
         public async Task LoadAsync(TransformedData data)
         {
             using var connection = _context.CreateDwhConnection();
-            connection.Open();
+            if (connection.State != ConnectionState.Open) connection.Open();
 
             using var transaction = connection.BeginTransaction();
 
             try
             {
-                // 🔹 LIMPIAR TABLAS (orden correcto por FK)
                 await connection.ExecuteAsync("DELETE FROM FactSales", transaction: transaction);
                 await connection.ExecuteAsync("DELETE FROM DimDate", transaction: transaction);
                 await connection.ExecuteAsync("DELETE FROM DimProduct", transaction: transaction);
                 await connection.ExecuteAsync("DELETE FROM DimCustomer", transaction: transaction);
 
-                // 🔹 INSERT MASIVO (Dapper soporta listas)
+                
                 await connection.ExecuteAsync(@"
                     INSERT INTO DimCustomer (CustomerID, FirstName, LastName, Email, Phone, City, Country)
                     VALUES (@CustomerID, @FirstName, @LastName, @Email, @Phone, @City, @Country)
@@ -45,17 +44,20 @@ namespace AnalisisInventario.WorkerService.Load
                     VALUES (@DateID, @FullDate, @Year, @Month, @Day)
                 ", data.DimDates, transaction);
 
+                
                 await connection.ExecuteAsync(@"
                     INSERT INTO FactSales (OrderID, CustomerID, ProductID, DateID, Quantity, TotalPrice)
                     VALUES (@OrderID, @CustomerID, @ProductID, @DateID, @Quantity, @TotalPrice)
                 ", data.FactSales, transaction);
 
                 transaction.Commit();
+                Console.WriteLine("✅ Carga en Data Warehouse completada con éxito.");
             }
             catch (Exception ex)
             {
                 transaction.Rollback();
-                Console.WriteLine($"❌ Error en Load: {ex.Message}");
+               
+                Console.WriteLine($"❌ Error crítico en el proceso de Carga (Load): {ex.Message}");
                 throw;
             }
         }
