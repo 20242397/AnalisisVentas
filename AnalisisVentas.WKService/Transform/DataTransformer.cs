@@ -2,7 +2,7 @@
 using AnalisisVentas.Data.Entities.Dwh.Dimensions;
 using AnalisisVentas.Data.Entities.Dwh.Facts;
 using AnalisisVentas.Data.Interfaces;
-using SistemaVentas.ETL.App.Models.dboSchema;
+
 
 namespace AnalisisVentas.WKService.Transform
 {
@@ -12,53 +12,96 @@ namespace AnalisisVentas.WKService.Transform
         {
             var result = new TransformedData();
 
-           
-            var sqlCustomers = data.DbCustomers.Select(c => new DimCustomer
-            {
-                CustomerID = c.CustomerId,
-                FirstName = c.FirstName,
-                LastName = c.LastName,
-                Email = c.Email,
-                Phone = c.Phone,
-                City = "Local Source",
-                Country = "Dominican Republic"
-            });
+          
+            var apiCustomerLookup = data.ApiCustomers
+                .GroupBy(ac => ac.CustomerID)
+                .ToDictionary(g => g.Key, g => g.First());
 
-            var apiCustomers = data.ApiSales.Select(s => {
-              
-                var detail = data.ApiCustomers.FirstOrDefault(ac => ac.CustomerID == s.CustomerID);
-                return new DimCustomer
+            var sqlCustomerLookup = data.DbCustomers
+                .GroupBy(c => c.CustomerId)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            
+            result.DimCustomers = data.ApiSales
+                .GroupBy(s => s.CustomerID)
+                .Select(g =>
                 {
-                    CustomerID = s.CustomerID,
-                    FirstName = s.FirstName,
-                    LastName = s.LastName,
-                    Email = detail?.Email ?? "No Email",
-                    Phone = detail?.Phone ?? "No Phone",
-                    City = s.CityName,  
-                    Country = s.CountryName 
-                };
-            });
+                    var sale = g.First();
+                    var apiDetail = apiCustomerLookup.GetValueOrDefault(sale.CustomerID);
+                    var sqlDetail = sqlCustomerLookup.GetValueOrDefault(sale.CustomerID);
 
-            result.DimCustomers = sqlCustomers
-                .Concat(apiCustomers)
-                .GroupBy(c => c.CustomerID)
-                .Select(g => g.First())
+                    return new DimCustomer
+                    {
+                        CustomerID = sale.CustomerID,
+                        FirstName = sale.FirstName,
+                        LastName = sale.LastName,
+                       
+
+                        Email = apiDetail?.Email ?? sqlDetail?.Email ?? "No Email",
+                        Phone = apiDetail?.Phone ?? sqlDetail?.Phone ?? "No Phone",
+
+                       
+                        City = sale.CityName,
+                        Country = sale.CountryName
+                    };
+                })
                 .ToList();
 
             
-            result.DimProducts = data.DbProducts
-                .Select(p => new DimProduct { ProductID = p.ProductId, ProductName = p.ProductName, Category = "Local Stock", Price = p.Price ?? 0m })
-                .Concat(data.CsvProducts.Select(c => new DimProduct { ProductID = c.ProductID, ProductName = c.ProductName, Category = "CSV Import", Price = c.Price }))
-                .Concat(data.ApiSales.Select(a => new DimProduct
+            var apiCustomerIds = result.DimCustomers
+                .Select(c => c.CustomerID)
+                .ToHashSet();
+
+            var sqlOnlyCustomers = data.DbCustomers
+                .Where(c => !apiCustomerIds.Contains(c.CustomerId))
+                .Select(c => new DimCustomer
                 {
-                    ProductID = a.ProductID,
-                    ProductName = a.ProductName,
-                    Category = a.CategoryName,
-                    Price = a.Price
-                }))
+                    CustomerID = c.CustomerId,
+                    FirstName = c.FirstName,
+                    LastName = c.LastName,
+                    Email = c.Email,
+                    Phone = c.Phone,
+                    City = "Desconocido",
+                    Country = "República Dominicana"
+                });
+
+            result.DimCustomers = result.DimCustomers
+                .Concat(sqlOnlyCustomers)
+                .ToList();
+
+
+         
+            var apiProducts = data.ApiSales.Select(a => new DimProduct
+            {
+                ProductID = a.ProductID,
+                ProductName = a.ProductName,
+                Category = a.CategoryName,
+                Price = a.Price
+            });
+
+            var csvProducts = data.CsvProducts.Select(c => new DimProduct
+            {
+                ProductID = c.ProductID,
+                ProductName = c.ProductName,
+                Category = "CSV Import",
+                Price = c.Price
+            });
+
+            var sqlProducts = data.DbProducts.Select(p => new DimProduct
+            {
+                ProductID = p.ProductId,
+                ProductName = p.ProductName,
+                Category = "Stock Local",
+                Price = p.Price ?? 0m
+            });
+
+            result.DimProducts = apiProducts
+                .Concat(csvProducts)
+                .Concat(sqlProducts)
                 .GroupBy(p => p.ProductID)
                 .Select(g => g.First())
                 .ToList();
+
 
            
             var allDates = data.DbOrders.Select(o => o.OrderDate)
@@ -76,7 +119,8 @@ namespace AnalisisVentas.WKService.Transform
                 Day = d.Day
             }).ToList();
 
-           
+
+            
             var sqlFacts = from o in data.DbOrders
                            join od in data.DbOrderDetails on o.OrderId equals od.OrderId
                            select new FactSales
@@ -111,7 +155,10 @@ namespace AnalisisVentas.WKService.Transform
                 DateID = int.Parse(s.OrderDate.ToString("yyyyMMdd"))
             });
 
-            result.FactSales = sqlFacts.Concat(csvFacts).Concat(apiFacts).ToList();
+            result.FactSales = sqlFacts
+                .Concat(csvFacts)
+                .Concat(apiFacts)
+                .ToList();
 
             return result;
         }
