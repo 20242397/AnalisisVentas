@@ -20,7 +20,6 @@ namespace AnalisisVentas.WKService.Extract
         public async Task ExtractAsync(ExtractedData data)
         {
             using var connection = _context.CreateSourceConnection();
-
             try
             {
                 _logger.LogInformation(" Extrayendo datos de la base de datos...");
@@ -30,16 +29,21 @@ namespace AnalisisVentas.WKService.Extract
                 data.DbOrders = (await connection.QueryAsync<Order>("SELECT * FROM Orders")).ToList();
                 data.DbOrderDetails = (await connection.QueryAsync<OrderDetail>("SELECT * FROM OrderDetails")).ToList();
 
+             
+                data.DbCities = (await connection.QueryAsync<City>("SELECT * FROM Cities")).ToList();
+                data.DbCountries = (await connection.QueryAsync<Country>("SELECT * FROM Countries")).ToList();
+
                 _logger.LogInformation(" Datos de BD extraídos correctamente");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, " Error en DatabaseExtractor");
-
                 data.DbCustomers = new();
                 data.DbProducts = new();
                 data.DbOrders = new();
                 data.DbOrderDetails = new();
+                data.DbCities = new();
+                data.DbCountries = new();
             }
         }
     }

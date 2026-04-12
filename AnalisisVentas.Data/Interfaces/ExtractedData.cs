@@ -25,7 +25,8 @@ namespace AnalisisVentas.Data.Interfaces
         public List<Order> DbOrders { get; set; } = new();
         public List<OrderDetail> DbOrderDetails { get; set; } = new();
 
-       
+        public List<City> DbCities { get; set; } = new();
+        public List<Country> DbCountries { get; set; } = new();
 
         public async Task<ExtractedData> ExtractAsync()
         {
